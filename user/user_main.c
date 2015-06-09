@@ -23,6 +23,22 @@ loop(os_event_t *events)
     system_os_post(user_procTaskPrio, 0, 0 );
 }
 
+void ICACHE_FLASH_ATTR wifi_event_cb(System_Event_t *evt)
+{
+    uint8 newchannel = 0;
+    switch (evt->event) {
+        case EVENT_STAMODE_CONNECTED: //When connected to AP, change SoftAP to same channel to keep DHCPS working
+        newchannel = evt->event_info.connected.channel;
+        os_printf("\r\nWifi connected at channel %d\r\n", newchannel);
+        break;
+
+        case EVENT_STAMODE_GOT_IP:
+        os_printf("\r\nWifi got IP...\r\n");
+        break;
+    }
+
+}
+
 //Init function
 void ICACHE_FLASH_ATTR
 user_init()
@@ -46,6 +62,7 @@ user_init()
     os_memcpy(&stationConf.ssid, ssid, 32);
     os_memcpy(&stationConf.password, password, 64);
     wifi_station_set_config(&stationConf);
+    wifi_set_event_handler_cb(wifi_event_cb);
 
     //Start os task
     system_os_task(loop, user_procTaskPrio,user_procTaskQueue, user_procTaskQueueLen);
