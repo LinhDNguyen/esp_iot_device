@@ -152,6 +152,10 @@ void task3(void *pvParameters)
 void ICACHE_FLASH_ATTR
 user_init(void)
 {
+    // Delay 50ms for stablization
+    os_delay_us(50000);
+
+    // Change uart baudrate to 115200
     uart_div_modify(0, UART_CLK_FREQ / 115200);
 
     printf("SDK version:%s\n", system_get_sdk_version());
