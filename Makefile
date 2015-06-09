@@ -56,16 +56,20 @@ LINKFLAGS_eagle.app.v6 = \
     -u call_user_start	\
 	-Wl,-static						\
 	-Wl,--start-group					\
+	-lc					\
 	-lgcc					\
 	-lhal					\
 	-lphy	\
 	-lpp	\
 	-lnet80211	\
+	-llwip	\
 	-lwpa	\
 	-lmain	\
-	-lfreertos	\
-	-llwip	\
-	-ludhcp	\
+	-ljson	\
+	-lupgrade\
+	-lssl	\
+	-lpwm	\
+	-lsmartconfig \
 	$(DEP_LIBS_eagle.app.v6)					\
 	-Wl,--end-group
 
