@@ -15,6 +15,8 @@ static void loop(os_event_t *events);
 // Global VARs
 static uint8 curState = STATE_UNKNOWN;
 static volatile os_timer_t curTimer;
+static esp_tcp global_tcp;                                  // TCP connect var (see espconn.h)
+static struct espconn global_tcp_connect;                   // Connection struct (see espconn.h)
 
 // Functions
 void user_rf_pre_init(void)
@@ -61,11 +63,68 @@ void timer_check_connection(void *arg)
     smartconfig_start(SC_TYPE_ESPTOUCH, smartconfig_done);
 }
 
+static void ICACHE_FLASH_ATTR ThingSpeakThingSpeaktcpNetworkRecvCb(void *arg, char *data, unsigned short len)
+{
+
+   os_printf("TS: RECV - [%s]",data);
+   curState = STATE_RECEIVED;
+}
+
+static void ICACHE_FLASH_ATTR ThingSpeaktcpNetworkConnectedCb(void *arg)
+{
+  struct espconn *tcpconn=(struct espconn *)arg;
+  // Thingspeak sends back data so define a  Call back for this.
+  espconn_regist_recvcb(tcpconn, ThingSpeakThingSpeaktcpNetworkRecvCb);
+
+  os_printf("TS: TCP connected\n\r");
+  espconn_recv_hold(tcpconn);
+
+}
+
+static void ICACHE_FLASH_ATTR ThingSpeaktcpNetworkReconCb(void *arg, sint8 err)
+{
+  os_printf("TS: TCP reconnect\n\r");
+  curState = STATE_START;
+}
+
+
+static void ICACHE_FLASH_ATTR ThingSpeaktcpNetworkDisconCb(void *arg)
+{
+  os_printf("TS: TCP disconnect\n\r");
+  curState = STATE_START;
+}
+
 //Main code function
 static void ICACHE_FLASH_ATTR
 loop(os_event_t *events)
 {
-    os_delay_us(10000);
+    char data[120];
+    if (curState == STATE_CONNECTED)
+    {
+        curState = STATE_RECEIVING;
+        // Update Server
+        global_tcp_connect.type=ESPCONN_TCP;                                    // We want to make a TCP connection
+        global_tcp_connect.state=ESPCONN_NONE;                                  // Set default state to none
+        global_tcp_connect.proto.tcp=&global_tcp;                               // Give a pointer to our TCP var
+        global_tcp_connect.proto.tcp->local_port=espconn_port();                // Ask a free local port to the API
+
+        // google.com.vn 216.58.221.99
+        global_tcp_connect.proto.tcp->remote_port=80;                         // Set remote port (bcbcostam)
+        global_tcp_connect.proto.tcp->remote_ip[0]=192;                       // Your computer IP
+        global_tcp_connect.proto.tcp->remote_ip[1]=168;                        // Your computer IP
+        global_tcp_connect.proto.tcp->remote_ip[2]=1;                       // Your computer IP
+        global_tcp_connect.proto.tcp->remote_ip[3]=120;                        // Your computer IP
+
+        espconn_regist_connectcb(&global_tcp_connect, ThingSpeaktcpNetworkConnectedCb);   // Register connect callback
+        espconn_regist_disconcb(&global_tcp_connect, ThingSpeaktcpNetworkDisconCb);       // Register disconnect callback
+        espconn_regist_reconcb(&global_tcp_connect, ThingSpeaktcpNetworkReconCb);         // Register reconnection function
+        espconn_connect(&global_tcp_connect);                                   // Start connection
+
+        os_sprintf(data, "GET /test HTTP/1.1\r\nHost: localhost:5000\r\nUser-agent: the best\r\nAccept: */*\r\nConnection: close\r\n\r\n");
+        os_printf ("TS: Sending this - [%s]",data);
+        espconn_sent(&global_tcp_connect, data, strlen(data));
+    }
+    os_delay_us(1000);
     system_os_post(user_procTaskPrio, 0, 0 );
 }
 
@@ -83,9 +142,13 @@ void ICACHE_FLASH_ATTR wifi_event_cb(System_Event_t *evt)
 
         case EVENT_STAMODE_GOT_IP:
         os_printf("\r\nWifi got IP...\r\n");
-        curState = STATE_NETCONNECTED;
+        curState = STATE_CONNECTED;
         // Disable timer when connected
         os_timer_disarm(&curTimer);
+
+        case EVENT_STAMODE_DISCONNECTED:
+        curState = STATE_START;
+        os_printf("C> Wifi disconnected\r\n");
         break;
     }
 

@@ -4,10 +4,12 @@
 #define CONFIG_SECTOR_NUM   0x7E
 #define CONFIG_ADDRESS      0x7E000
 
-#define STATE_UNKNOWN       0U
-#define STATE_START         1U
-#define STATE_NETCONNECTED  2U
-#define STATE_MAX           3U
+#define STATE_UNKNOWN       0u
+#define STATE_START         1u
+#define STATE_CONNECTED     2u
+#define STATE_RECEIVING     3u
+#define STATE_RECEIVED      4u
+#define STATE_MAX           5U
 
 #endif
 
