@@ -16,13 +16,97 @@ void ICACHE_FLASH_ATTR network_init();
 // Global VARs
 static uint8 curState = STATE_UNKNOWN;
 static volatile os_timer_t connectTimer;
-static volatile os_timer_t requestTimer;
-static esp_tcp global_tcp;                                  // TCP connect var (see espconn.h)
-static struct espconn global_tcp_connect;                   // Connection struct (see espconn.h)
 
 // Functions
 void user_rf_pre_init(void)
 {
+}
+
+static void ICACHE_FLASH_ATTR networkConnectedCb(void *arg);
+static void ICACHE_FLASH_ATTR networkDisconCb(void *arg);
+static void ICACHE_FLASH_ATTR networkReconCb(void *arg, sint8 err);
+static void ICACHE_FLASH_ATTR networkRecvCb(void *arg, char *data, unsigned short len);
+static void ICACHE_FLASH_ATTR networkSentCb(void *arg);
+void ICACHE_FLASH_ATTR network_init();
+
+LOCAL os_timer_t network_timer;
+
+static void ICACHE_FLASH_ATTR networkSentCb(void *arg) {
+  os_printf("\r\nSEND CB");
+}
+
+static void ICACHE_FLASH_ATTR networkRecvCb(void *arg, char *data, unsigned short len) {
+
+  struct espconn *conn=(struct espconn *)arg;
+  int x;
+  os_printf("\r\nReceived: [%s]", data);
+}
+
+static void ICACHE_FLASH_ATTR networkConnectedCb(void *arg) {
+  struct espconn *conn=(struct espconn *)arg;
+
+  char *data = "GET /test HTTP/1.0\r\n\r\n\r\n";
+  sint8 d = espconn_sent(conn,data,strlen(data));
+
+  espconn_regist_recvcb(conn, networkRecvCb);
+  os_printf("\r\nSENT: [%s]", data);
+}
+
+static void ICACHE_FLASH_ATTR networkReconCb(void *arg, sint8 err) {
+ os_printf("Reconnect\n\r");
+ network_init();
+}
+
+static void ICACHE_FLASH_ATTR networkDisconCb(void *arg) {
+ os_printf("Disconnect\n\r");
+ network_init();
+}
+
+
+void ICACHE_FLASH_ATTR network_start() {
+  static struct espconn conn;
+  static ip_addr_t ip;
+  static esp_tcp tcp;
+  char page_buffer[20];
+  os_printf("\r\nnetwork_start:");
+
+  conn.type=ESPCONN_TCP;
+  conn.state=ESPCONN_NONE;
+  conn.proto.tcp=&tcp;
+  conn.proto.tcp->local_port=espconn_port();
+  conn.proto.tcp->remote_port=8000;
+  conn.proto.tcp->remote_ip[0] = 192;
+  conn.proto.tcp->remote_ip[1] = 168;
+  conn.proto.tcp->remote_ip[2] = 1;
+  conn.proto.tcp->remote_ip[3] = 120;
+  espconn_regist_connectcb(&conn, networkConnectedCb);
+  espconn_regist_disconcb(&conn, networkDisconCb);
+  espconn_regist_reconcb(&conn, networkReconCb);
+  espconn_regist_recvcb(&conn, networkRecvCb);
+  espconn_regist_sentcb(&conn, networkSentCb);
+  espconn_connect(&conn);
+}
+
+void ICACHE_FLASH_ATTR network_check_ip(void) {
+  struct ip_info ipconfig;
+  os_timer_disarm(&network_timer);
+  wifi_get_ip_info(STATION_IF, &ipconfig);
+  if (wifi_station_get_connect_status() == STATION_GOT_IP && ipconfig.ip.addr != 0) {
+    char page_buffer[20];
+    os_sprintf(page_buffer,"IP: %d.%d.%d.%d",IP2STR(&ipconfig.ip));
+    os_printf("\r\n%s", page_buffer);
+    network_start();
+  } else {
+    os_printf("No ip found\n\r");
+    os_timer_setfn(&network_timer, (os_timer_func_t *)network_check_ip, NULL);
+    os_timer_arm(&network_timer, 1000, 0);
+  }
+}
+
+void ICACHE_FLASH_ATTR network_init() {
+  os_timer_disarm(&network_timer);
+  os_timer_setfn(&network_timer, (os_timer_func_t *)network_check_ip, NULL);
+  os_timer_arm(&network_timer, 1000, 0);
 }
 
 void ICACHE_FLASH_ATTR
@@ -63,100 +147,6 @@ smartconfig_done(sc_status status, void *pdata)
 void timer_check_connection(void *arg)
 {
     smartconfig_start(SC_TYPE_ESPTOUCH, smartconfig_done);
-}
-
-static void ICACHE_FLASH_ATTR ThingSpeakThingSpeaktcpNetworkRecvCb(void *arg, char *data, unsigned short len)
-{
-
-   os_printf("\r\nTS: RECV - [%s]",data);
-   curState = STATE_RECEIVED;
-}
-
-static void ICACHE_FLASH_ATTR ThingSpeaktcpNetworkConnectedCb(void *arg)
-{
-    struct espconn *tcpconn=(struct espconn *)arg;
-    char data[120];
-
-    curState = STATE_RECEIVED;
-
-    espconn_regist_recvcb(tcpconn, ThingSpeakThingSpeaktcpNetworkRecvCb);
-
-    os_printf("\r\nTS: TCP connected");
-
-    os_sprintf(data, "GET /test HTTP/1.1\r\nHost: 192.168.1.120:5000\r\nUser-agent: the best\r\nAccept: */*\r\n\r\n");
-    os_printf ("TS: Sending - [%s]",data);
-    espconn_sent(&global_tcp_connect, data, strlen(data));
-    // espconn_recv_hold(tcpconn);
-}
-
-static void ICACHE_FLASH_ATTR ThingSpeaktcpNetworkReconCb(void *arg, sint8 err)
-{
-  os_printf("\r\nTS: TCP reconnect - %d", err);
-  // curState = STATE_CONNECTED;
-  network_init();
-}
-
-
-static void ICACHE_FLASH_ATTR ThingSpeaktcpNetworkDisconCb(void *arg)
-{
-  os_printf("\r\nTS: TCP disconnect");
-  curState = STATE_CONNECTED;
-}
-static void ICACHE_FLASH_ATTR init_tcp_conn(void)
-{
-    os_printf("\r\n===init_tcp_conn()");
-    global_tcp_connect.type = ESPCONN_TCP;                                  // We want to make a TCP connection
-    global_tcp_connect.state = ESPCONN_NONE;                                // Set default state to none
-    global_tcp_connect.proto.tcp = &global_tcp;                             // Give a pointer to our TCP var
-    global_tcp_connect.proto.tcp->local_port = espconn_port();              // Ask a free local port to the API
-
-    // google.com.vn 216.58.221.99
-    global_tcp_connect.proto.tcp->remote_port = 8000;                       // Set remote port (bcbcostam)
-    global_tcp_connect.proto.tcp->remote_ip[0] = 192;                       // Your computer IP
-    global_tcp_connect.proto.tcp->remote_ip[1] = 168;                       // Your computer IP
-    global_tcp_connect.proto.tcp->remote_ip[2] = 1;                         // Your computer IP
-    global_tcp_connect.proto.tcp->remote_ip[3] = 120;                       // Your computer IP
-
-    espconn_regist_connectcb(&global_tcp_connect, ThingSpeaktcpNetworkConnectedCb); // Register connect callback
-    espconn_regist_disconcb(&global_tcp_connect, ThingSpeaktcpNetworkDisconCb);     // Register disconnect callback
-    espconn_regist_reconcb(&global_tcp_connect, ThingSpeaktcpNetworkReconCb);       // Register reconnection function
-    espconn_connect(&global_tcp_connect);                                           // Start connection
-}
-
-void ICACHE_FLASH_ATTR network_start(void)
-{
-    os_printf("\r\n===network_start()");
-    init_tcp_conn();            // Init tcp connection
-}
-
-void ICACHE_FLASH_ATTR network_check_ip(void)
-{
-    struct ip_info ipconfig;
-
-    os_printf("\r\n===network_check_ip()");
-
-    os_timer_disarm(&requestTimer);                // Disarm timer
-    wifi_get_ip_info(STATION_IF, &ipconfig);        // Get Wifi info
-
-    if (wifi_station_get_connect_status() == STATION_GOT_IP && ipconfig.ip.addr != 0)
-    {
-        network_start();                            // Everything in order
-    }
-    else
-    {
-        os_printf("Waiting for IP...\n\r");
-        os_timer_setfn(&requestTimer, (os_timer_func_t *)network_check_ip, NULL);
-        os_timer_arm(&requestTimer, 10000, 0);
-    }
-}
-
-// network init function
-void ICACHE_FLASH_ATTR network_init()
-{
-    os_printf("\r\n===network_init()");
-    os_timer_disarm(&requestTimer);
-    os_timer_setfn(&requestTimer, (os_timer_func_t *)network_check_ip, NULL);
-    os_timer_arm(&requestTimer, 5000, 0);
 }
 
 //Main code function
