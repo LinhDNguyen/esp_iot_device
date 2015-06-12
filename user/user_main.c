@@ -77,6 +77,8 @@ void ICACHE_FLASH_ATTR wifi_event_cb(System_Event_t *evt)
         newchannel = evt->event_info.connected.channel;
         os_printf("\r\nWifi connected at channel %d\r\n", newchannel);
         curState = STATE_START;
+        // Disable timer when connected
+        os_timer_disarm(&curTimer);
         break;
 
         case EVENT_STAMODE_GOT_IP:
@@ -122,7 +124,7 @@ user_init()
     // After 5s, if wifi is not connected, start the smartconfig
     os_timer_disarm(&curTimer);
     os_timer_setfn(&curTimer, (os_timer_func_t *)timer_check_connection, NULL);
-    os_timer_arm(&curTimer, 7000, 0);
+    os_timer_arm(&curTimer, 10000, 0);
 
     //Start os task
     system_os_task(loop, user_procTaskPrio,user_procTaskQueue, user_procTaskQueueLen);
