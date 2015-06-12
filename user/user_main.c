@@ -114,7 +114,6 @@ user_init()
     wifi_station_get_config_default(&stationConf);
 
     //Set ap settings
-    os_printf("\r\n===%s===%s===", stationConf.ssid, stationConf.password);
     wifi_station_set_config_current(&stationConf);
     wifi_set_event_handler_cb(wifi_event_cb);
     wifi_station_set_reconnect_policy(1);
