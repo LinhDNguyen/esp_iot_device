@@ -79,8 +79,6 @@ static void ICACHE_FLASH_ATTR networkRecvCb(void *arg, char *data, unsigned shor
         {
             isStatus = true;
         }
-
-        // os_printf("\r\n+%c+%d+%s+", jsonparse_get_type(&jsonState), tmp, outBuf);
     }
     while (jsonRes);
 }
@@ -145,7 +143,9 @@ void ICACHE_FLASH_ATTR network_check_ip(void) {
     if (wifi_station_get_connect_status() == STATION_GOT_IP && ipconfig.ip.addr != 0) {
         network_start();
     } else {
+#if DEBUG
         os_printf("No ip found\n\r");
+#endif
         os_timer_setfn(&network_timer, (os_timer_func_t *)network_check_ip, NULL);
         os_timer_arm(&network_timer, UPDATE_TIME_MS, 0);
     }
@@ -165,25 +165,37 @@ smartconfig_done(sc_status status, void *pdata)
 
     switch(status) {
         case SC_STATUS_WAIT:
+#if DEBUG
             os_printf("SC_STATUS_WAIT\n");
+#endif
             break;
         case SC_STATUS_FIND_CHANNEL:
+#if DEBUG
             os_printf("SC_STATUS_FIND_CHANNEL\n");
+#endif
             break;
         case SC_STATUS_GETTING_SSID_PSWD:
+#if DEBUG
             os_printf("SC_STATUS_GETTING_SSID_PSWD\n");
+#endif
             break;
         case SC_STATUS_LINK:
+#if DEBUG
             os_printf("SC_STATUS_LINK\n");
+#endif
 
             wifi_station_set_config(sta_conf);
             wifi_station_disconnect();
             wifi_station_connect();
             break;
         case SC_STATUS_LINK_OVER:
+#if DEBUG
             os_printf("SC_STATUS_LINK_OVER\n");
+#endif
             os_memcpy(phone_ip, (uint8*)pdata, 4);
+#if DEBUG
             os_printf("Phone ip: %d.%d.%d.%d\n",phone_ip[0],phone_ip[1],phone_ip[2],phone_ip[3]);
+#endif
             smartconfig_stop();
             wifi_station_set_auto_connect(1);
             break;
@@ -220,14 +232,18 @@ void ICACHE_FLASH_ATTR wifi_event_cb(System_Event_t *evt)
     switch (evt->event) {
         case EVENT_STAMODE_CONNECTED: //When connected to AP, change SoftAP to same channel to keep DHCPS working
         newchannel = evt->event_info.connected.channel;
+#if DEBUG
         os_printf("\r\nWifi connected at channel %d\r\n", newchannel);
+#endif
         curState = STATE_START;
         // Disable timer when connected
         os_timer_disarm(&connectTimer);
         break;
 
         case EVENT_STAMODE_GOT_IP:
+#if DEBUG
         os_printf("\r\nWifi got IP...\r\n");
+#endif
         curState = STATE_CONNECTED;
         // Disable timer when connected
         os_timer_disarm(&connectTimer);
@@ -235,7 +251,9 @@ void ICACHE_FLASH_ATTR wifi_event_cb(System_Event_t *evt)
 
         case EVENT_STAMODE_DISCONNECTED:
         curState = STATE_START;
+#if DEBUG
         os_printf("\r\nWifi disconnected\r\n");
+#endif
         break;
     }
 
@@ -252,7 +270,9 @@ user_init()
     // Initialize UART0 to use as debug
     uart_div_modify(0, UART_CLK_FREQ / 115200);
 
+#if DEBUG
     os_printf("\n\nSDK version:%s\n", system_get_sdk_version());
+#endif
 
     // Initialize the GPIO subsystem.
     gpio_init();

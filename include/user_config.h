@@ -12,10 +12,10 @@
 #define STATE_MAX           5U
 
 // Enable debugging message
-#define DEBUG               0
+#define DEBUG               1
 
 // Get status time
-#define UPDATE_TIME_MS      500
+#define UPDATE_TIME_MS      5000
 
 #endif
 
