@@ -6,6 +6,7 @@
 #include "user_interface.h"
 #include "smartconfig.h"
 #include "espconn.h"
+#include "json/jsonparse.h"
 
 #define user_procTaskPrio        0
 #define user_procTaskQueueLen    1
@@ -16,6 +17,7 @@ void ICACHE_FLASH_ATTR network_init();
 // Global VARs
 static uint8 curState = STATE_UNKNOWN;
 static volatile os_timer_t connectTimer;
+static uint8 ledStatus = 0;
 
 // Functions
 void user_rf_pre_init(void)
@@ -32,34 +34,79 @@ void ICACHE_FLASH_ATTR network_init();
 LOCAL os_timer_t network_timer;
 
 static void ICACHE_FLASH_ATTR networkSentCb(void *arg) {
+#if DEBUG
     os_printf("\r\nSEND CB");
+#endif
 }
 
 static void ICACHE_FLASH_ATTR networkRecvCb(void *arg, char *data, unsigned short len) {
     struct espconn *conn=(struct espconn *)arg;
-    os_printf("\r\nReceived: [%s]", data);
+    uint8 *jsonPtr = NULL;
+    struct jsonparse_state jsonState;
+    uint8 outBuf[40] = {0};
+    int jsonRes = 0;
+    int tmp = 0;
+    bool isStatus = false;
+
     curState = STATE_RECEIVED;
+    // Process received data to get json string
+    jsonPtr = (uint8 *)strchr(data, '{');
+    if (!jsonPtr) return;
+
+#if DEBUG
+    os_printf("\r\nReceived: %d - [%s]", strlen(jsonPtr), jsonPtr);
+#endif
+    jsonparse_setup(&jsonState, jsonPtr, strlen(jsonPtr));
+
+    do
+    {
+        os_memset(outBuf, 0, sizeof(outBuf));
+        jsonRes = jsonparse_next(&jsonState);
+        tmp = jsonparse_copy_value(&jsonState, outBuf, sizeof(outBuf));
+
+        if (isStatus &&
+            (jsonparse_get_type(&jsonState) == JSON_TYPE_PAIR) &&
+            (tmp == 48))
+        {
+#if DEBUG
+            os_printf("\r\n======CUR STATUS: %s - %d======", outBuf, jsonparse_get_value_as_int(&jsonState));
+#endif
+            ledStatus = jsonparse_get_value_as_int(&jsonState);
+        }
+        if ((jsonparse_get_type(&jsonState) == JSON_TYPE_OBJECT) &&
+            (tmp == 78) &&
+            (strcmp("status", outBuf) == 0))
+        {
+            isStatus = true;
+        }
+
+        // os_printf("\r\n+%c+%d+%s+", jsonparse_get_type(&jsonState), tmp, outBuf);
+    }
+    while (jsonRes);
 }
 
 static void ICACHE_FLASH_ATTR networkConnectedCb(void *arg) {
     struct espconn *conn=(struct espconn *)arg;
 
-    char *data = "GET /test HTTP/1.0\r\n\r\n\r\n";
-    sint8 d = espconn_sent(conn,data,strlen(data));
+    char *data = "GET /rest/get_status/1 HTTP/1.0\r\nAccept: application/json\r\n\r\n\r\n";
+    espconn_sent(conn,data,strlen(data));
 
     espconn_regist_recvcb(conn, networkRecvCb);
-    os_printf("\r\nSENT: [%s]", data);
     curState = STATE_RECEIVING;
 }
 
 static void ICACHE_FLASH_ATTR networkReconCb(void *arg, sint8 err) {
-    os_printf("Reconnect\n\r");
+#if DEBUG
+    os_printf("\r\nReconnect");
+#endif
     // Change state to make new connection
     curState = STATE_CONNECTED;
 }
 
 static void ICACHE_FLASH_ATTR networkDisconCb(void *arg) {
-    os_printf("Disconnect\n\r");
+#if DEBUG
+    os_printf("\r\nDisconnect");
+#endif
     // Change state to make new connection
     curState = STATE_CONNECTED;
 }
@@ -70,7 +117,9 @@ void ICACHE_FLASH_ATTR network_start() {
     static ip_addr_t ip;
     static esp_tcp tcp;
     char page_buffer[20];
+#if DEBUG
     os_printf("\r\nnetwork_start:");
+#endif
 
     conn.type=ESPCONN_TCP;
     conn.state=ESPCONN_NONE;
@@ -94,21 +143,18 @@ void ICACHE_FLASH_ATTR network_check_ip(void) {
     os_timer_disarm(&network_timer);
     wifi_get_ip_info(STATION_IF, &ipconfig);
     if (wifi_station_get_connect_status() == STATION_GOT_IP && ipconfig.ip.addr != 0) {
-    char page_buffer[20];
-    os_sprintf(page_buffer,"IP: %d.%d.%d.%d",IP2STR(&ipconfig.ip));
-    os_printf("\r\n%s", page_buffer);
-    network_start();
+        network_start();
     } else {
-    os_printf("No ip found\n\r");
-    os_timer_setfn(&network_timer, (os_timer_func_t *)network_check_ip, NULL);
-    os_timer_arm(&network_timer, 1000, 0);
+        os_printf("No ip found\n\r");
+        os_timer_setfn(&network_timer, (os_timer_func_t *)network_check_ip, NULL);
+        os_timer_arm(&network_timer, UPDATE_TIME_MS, 0);
     }
 }
 
 void ICACHE_FLASH_ATTR network_init() {
     os_timer_disarm(&network_timer);
     os_timer_setfn(&network_timer, (os_timer_func_t *)network_check_ip, NULL);
-    os_timer_arm(&network_timer, 5000, 0);
+    os_timer_arm(&network_timer, UPDATE_TIME_MS, 0);
 }
 
 void ICACHE_FLASH_ATTR
@@ -161,6 +207,9 @@ loop(os_event_t *events)
         // Update Server
         network_init();
     }
+    // Update state of LED5
+    GPIO_OUTPUT_SET(GPIO_ID_PIN(5), (ledStatus?1:0));
+
     os_delay_us(1000);
     system_os_post(user_procTaskPrio, 0, 0 );
 }
@@ -204,6 +253,13 @@ user_init()
     uart_div_modify(0, UART_CLK_FREQ / 115200);
 
     os_printf("\n\nSDK version:%s\n", system_get_sdk_version());
+
+    // Initialize the GPIO subsystem.
+    gpio_init();
+    //Set GPIO5 to output mode
+    PIN_FUNC_SELECT(PERIPHS_IO_MUX_GPIO5_U, FUNC_GPIO5);
+    //Set GPIO2 low
+    GPIO_OUTPUT_SET(GPIO_ID_PIN(5), 0);
 
     // Use GPIO4 led to indicate wifi status
     wifi_status_led_install(4, PERIPHS_IO_MUX_GPIO4_U, FUNC_GPIO4);
