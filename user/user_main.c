@@ -32,81 +32,83 @@ void ICACHE_FLASH_ATTR network_init();
 LOCAL os_timer_t network_timer;
 
 static void ICACHE_FLASH_ATTR networkSentCb(void *arg) {
-  os_printf("\r\nSEND CB");
+    os_printf("\r\nSEND CB");
 }
 
 static void ICACHE_FLASH_ATTR networkRecvCb(void *arg, char *data, unsigned short len) {
-
-  struct espconn *conn=(struct espconn *)arg;
-  int x;
-  os_printf("\r\nReceived: [%s]", data);
+    struct espconn *conn=(struct espconn *)arg;
+    os_printf("\r\nReceived: [%s]", data);
+    curState = STATE_RECEIVED;
 }
 
 static void ICACHE_FLASH_ATTR networkConnectedCb(void *arg) {
-  struct espconn *conn=(struct espconn *)arg;
+    struct espconn *conn=(struct espconn *)arg;
 
-  char *data = "GET /test HTTP/1.0\r\n\r\n\r\n";
-  sint8 d = espconn_sent(conn,data,strlen(data));
+    char *data = "GET /test HTTP/1.0\r\n\r\n\r\n";
+    sint8 d = espconn_sent(conn,data,strlen(data));
 
-  espconn_regist_recvcb(conn, networkRecvCb);
-  os_printf("\r\nSENT: [%s]", data);
+    espconn_regist_recvcb(conn, networkRecvCb);
+    os_printf("\r\nSENT: [%s]", data);
+    curState = STATE_RECEIVING;
 }
 
 static void ICACHE_FLASH_ATTR networkReconCb(void *arg, sint8 err) {
- os_printf("Reconnect\n\r");
- network_init();
+    os_printf("Reconnect\n\r");
+    // Change state to make new connection
+    curState = STATE_CONNECTED;
 }
 
 static void ICACHE_FLASH_ATTR networkDisconCb(void *arg) {
- os_printf("Disconnect\n\r");
- network_init();
+    os_printf("Disconnect\n\r");
+    // Change state to make new connection
+    curState = STATE_CONNECTED;
 }
 
 
 void ICACHE_FLASH_ATTR network_start() {
-  static struct espconn conn;
-  static ip_addr_t ip;
-  static esp_tcp tcp;
-  char page_buffer[20];
-  os_printf("\r\nnetwork_start:");
+    static struct espconn conn;
+    static ip_addr_t ip;
+    static esp_tcp tcp;
+    char page_buffer[20];
+    os_printf("\r\nnetwork_start:");
 
-  conn.type=ESPCONN_TCP;
-  conn.state=ESPCONN_NONE;
-  conn.proto.tcp=&tcp;
-  conn.proto.tcp->local_port=espconn_port();
-  conn.proto.tcp->remote_port=8000;
-  conn.proto.tcp->remote_ip[0] = 192;
-  conn.proto.tcp->remote_ip[1] = 168;
-  conn.proto.tcp->remote_ip[2] = 1;
-  conn.proto.tcp->remote_ip[3] = 120;
-  espconn_regist_connectcb(&conn, networkConnectedCb);
-  espconn_regist_disconcb(&conn, networkDisconCb);
-  espconn_regist_reconcb(&conn, networkReconCb);
-  espconn_regist_recvcb(&conn, networkRecvCb);
-  espconn_regist_sentcb(&conn, networkSentCb);
-  espconn_connect(&conn);
+    conn.type=ESPCONN_TCP;
+    conn.state=ESPCONN_NONE;
+    conn.proto.tcp=&tcp;
+    conn.proto.tcp->local_port=espconn_port();
+    conn.proto.tcp->remote_port=8000;
+    conn.proto.tcp->remote_ip[0] = 192;
+    conn.proto.tcp->remote_ip[1] = 168;
+    conn.proto.tcp->remote_ip[2] = 1;
+    conn.proto.tcp->remote_ip[3] = 120;
+    espconn_regist_connectcb(&conn, networkConnectedCb);
+    espconn_regist_disconcb(&conn, networkDisconCb);
+    espconn_regist_reconcb(&conn, networkReconCb);
+    espconn_regist_recvcb(&conn, networkRecvCb);
+    espconn_regist_sentcb(&conn, networkSentCb);
+    espconn_connect(&conn);
 }
 
 void ICACHE_FLASH_ATTR network_check_ip(void) {
-  struct ip_info ipconfig;
-  os_timer_disarm(&network_timer);
-  wifi_get_ip_info(STATION_IF, &ipconfig);
-  if (wifi_station_get_connect_status() == STATION_GOT_IP && ipconfig.ip.addr != 0) {
+    struct ip_info ipconfig;
+    os_timer_disarm(&network_timer);
+    wifi_get_ip_info(STATION_IF, &ipconfig);
+    if (wifi_station_get_connect_status() == STATION_GOT_IP && ipconfig.ip.addr != 0) {
     char page_buffer[20];
     os_sprintf(page_buffer,"IP: %d.%d.%d.%d",IP2STR(&ipconfig.ip));
     os_printf("\r\n%s", page_buffer);
     network_start();
-  } else {
+    } else {
     os_printf("No ip found\n\r");
     os_timer_setfn(&network_timer, (os_timer_func_t *)network_check_ip, NULL);
     os_timer_arm(&network_timer, 1000, 0);
-  }
+    }
 }
 
 void ICACHE_FLASH_ATTR network_init() {
-  os_timer_disarm(&network_timer);
-  os_timer_setfn(&network_timer, (os_timer_func_t *)network_check_ip, NULL);
-  os_timer_arm(&network_timer, 1000, 0);
+    os_timer_disarm(&network_timer);
+    os_timer_setfn(&network_timer, (os_timer_func_t *)network_check_ip, NULL);
+    os_timer_arm(&network_timer, 5000, 0);
 }
 
 void ICACHE_FLASH_ATTR
@@ -158,10 +160,6 @@ loop(os_event_t *events)
         curState = STATE_RECEIVING;
         // Update Server
         network_init();
-    }
-    else if (curState == STATE_RECEIVED)
-    {
-        os_printf("\r\n\r\n===============RECEIVED!!!===============");
     }
     os_delay_us(1000);
     system_os_post(user_procTaskPrio, 0, 0 );
