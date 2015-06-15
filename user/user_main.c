@@ -86,7 +86,7 @@ static void ICACHE_FLASH_ATTR networkRecvCb(void *arg, char *data, unsigned shor
 static void ICACHE_FLASH_ATTR networkConnectedCb(void *arg) {
     struct espconn *conn=(struct espconn *)arg;
 
-    char *data = "GET /rest/get_status/1 HTTP/1.0\r\nAccept: application/json\r\n\r\n\r\n";
+    char *data = "GET /rest/get_status/1 HTTP/1.0\r\nAccept: application/json\r\nAuthorization: Basic cmVzdDp0ZXN0QDEyMw==\r\n\r\n\r\n";
     espconn_sent(conn,data,strlen(data));
 
     espconn_regist_recvcb(conn, networkRecvCb);
@@ -278,8 +278,12 @@ user_init()
     gpio_init();
     //Set GPIO5 to output mode
     PIN_FUNC_SELECT(PERIPHS_IO_MUX_GPIO5_U, FUNC_GPIO5);
+    // PIN_FUNC_SELECT(PERIPHS_IO_MUX_GPIO12_U, FUNC_GPIO12);
+    // PIN_FUNC_SELECT(PERIPHS_IO_MUX_GPIO13_U, FUNC_GPIO13);
     //Set GPIO2 low
     GPIO_OUTPUT_SET(GPIO_ID_PIN(5), 0);
+    // GPIO_OUTPUT_SET(GPIO_ID_PIN(12), 0);
+    // GPIO_OUTPUT_SET(GPIO_ID_PIN(13), 0);
 
     // Use GPIO4 led to indicate wifi status
     wifi_status_led_install(4, PERIPHS_IO_MUX_GPIO4_U, FUNC_GPIO4);

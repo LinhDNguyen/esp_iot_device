@@ -15,7 +15,7 @@
 #define DEBUG               1
 
 // Get status time
-#define UPDATE_TIME_MS      5000
+#define UPDATE_TIME_MS      500
 
 #endif
 
