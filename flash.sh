@@ -22,7 +22,7 @@ fi
 
 if [[ $flashrom -gt 0 ]]; then
   echo "============FLASH NEW ROM============"
-  ../esptool.py --port ${usecom} write_flash 0x00000 ../bin/eagle.flash.bin 0x40000 ../bin/eagle.irom0text.bin;
+  esptool.py --port ${usecom} write_flash 0x00000 ../bin/eagle.flash.bin 0x40000 ../bin/eagle.irom0text.bin;
 fi
 
 if [[ $runuart -gt 0 ]]; then
