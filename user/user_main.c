@@ -281,10 +281,12 @@ user_init()
     PIN_FUNC_SELECT(PERIPHS_IO_MUX_GPIO5_U, FUNC_GPIO5);    //Set GPIO5 to output mode
     PIN_FUNC_SELECT(PERIPHS_IO_MUX_MTDI_U, FUNC_GPIO12);    //Set GPIO12 to output mode
     PIN_FUNC_SELECT(PERIPHS_IO_MUX_MTCK_U, FUNC_GPIO13);    //Set GPIO13 to output mode
-    //Set GPIO2 low
-    GPIO_OUTPUT_SET(GPIO_ID_PIN(5), 1);
-    GPIO_OUTPUT_SET(GPIO_ID_PIN(12), 1);
-    GPIO_OUTPUT_SET(GPIO_ID_PIN(13), 1);
+    PIN_FUNC_SELECT(PERIPHS_IO_MUX_MTMS_U, FUNC_GPIO14);    //Set GPIO14 to output mode
+
+    GPIO_OUTPUT_SET(GPIO_ID_PIN(5), 1);     //Set GPIO5 low
+    GPIO_OUTPUT_SET(GPIO_ID_PIN(12), 1);    //Set GPIO12 low
+    GPIO_OUTPUT_SET(GPIO_ID_PIN(13), 1);    //Set GPIO13 low
+    GPIO_OUTPUT_SET(GPIO_ID_PIN(14), 1);    //Set GPIO14 low
 
     // Use GPIO4 led to indicate wifi status
     wifi_status_led_install(4, PERIPHS_IO_MUX_GPIO4_U, FUNC_GPIO4);
