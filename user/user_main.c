@@ -17,7 +17,7 @@ void ICACHE_FLASH_ATTR network_init();
 // Global VARs
 static uint8 curState = STATE_UNKNOWN;
 static volatile os_timer_t connectTimer;
-static uint8 ledStatus = 0;
+static uint8 ledStatus = 1;
 
 // Functions
 void user_rf_pre_init(void)
@@ -272,18 +272,19 @@ user_init()
 
 #if DEBUG
     os_printf("\n\nSDK version:%s\n", system_get_sdk_version());
+    os_printf("\r\nFlash ID: 0x%x\n", spi_flash_get_id());
 #endif
 
     // Initialize the GPIO subsystem.
     gpio_init();
-    //Set GPIO5 to output mode
-    PIN_FUNC_SELECT(PERIPHS_IO_MUX_GPIO5_U, FUNC_GPIO5);
-    // PIN_FUNC_SELECT(PERIPHS_IO_MUX_GPIO12_U, FUNC_GPIO12);
-    // PIN_FUNC_SELECT(PERIPHS_IO_MUX_GPIO13_U, FUNC_GPIO13);
+
+    PIN_FUNC_SELECT(PERIPHS_IO_MUX_GPIO5_U, FUNC_GPIO5);    //Set GPIO5 to output mode
+    PIN_FUNC_SELECT(PERIPHS_IO_MUX_MTDI_U, FUNC_GPIO12);    //Set GPIO12 to output mode
+    PIN_FUNC_SELECT(PERIPHS_IO_MUX_MTCK_U, FUNC_GPIO13);    //Set GPIO13 to output mode
     //Set GPIO2 low
-    GPIO_OUTPUT_SET(GPIO_ID_PIN(5), 0);
-    // GPIO_OUTPUT_SET(GPIO_ID_PIN(12), 0);
-    // GPIO_OUTPUT_SET(GPIO_ID_PIN(13), 0);
+    GPIO_OUTPUT_SET(GPIO_ID_PIN(5), 1);
+    GPIO_OUTPUT_SET(GPIO_ID_PIN(12), 1);
+    GPIO_OUTPUT_SET(GPIO_ID_PIN(13), 1);
 
     // Use GPIO4 led to indicate wifi status
     wifi_status_led_install(4, PERIPHS_IO_MUX_GPIO4_U, FUNC_GPIO4);
