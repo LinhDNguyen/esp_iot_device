@@ -60,13 +60,35 @@ echo "romnumber   ${romnumber}"
 
 if [[ "x${flashrom}x" != "x0x" ]]; then
   echo "============FLASH NEW ROM - ${romnumber}============"
+  appfile='../bin/eagle.flash.bin'
+  appaddr='0x00000'
+  textfile='../bin/eagle.irom0text.bin'
+  textaddr='0x40000'
   if [[ $romnumber == 0 ]]; then
-    ./esptool.py --port ${usecom} write_flash 0x00000 ../bin/eagle.flash.bin 0x40000 ../bin/eagle.irom0text.bin;
+    appfile='../bin/eagle.flash.bin'
+    appaddr='0x00000'
+    textfile='../bin/eagle.irom0text.bin'
+    textaddr='0x40000'
   elif [[ $romnumber == 1 ]]; then
-    ./esptool.py --port ${usecom} write_flash 0x00000 ../bin/boot_v1.4\(b1\).bin 0x01000 ../bin/upgrade/user1.1024.new.2.bin;
+    appfile='../bin/boot_v1.4(b1).bin'
+    appaddr='0x00000'
+    textfile='../bin/upgrade/user1.1024.new.2.bin'
+    textaddr='0x01000'
   elif [[ $romnumber == 2 ]]; then
-    ./esptool.py --port ${usecom} write_flash 0x00000 ../bin/boot_v1.2.bin 0x81000 ../bin/upgrade/user2.1024.new.2.bin;
+    # appfile='../bin/boot_v1.2.bin'
+    appfile='../bin/boot_v1.4(b1).bin'
+    appaddr='0x00000'
+    textfile='../bin/upgrade/user2.1024.new.2.bin'
+    textaddr='0x81000'
   fi
+
+  echo "========================================="
+  echo "= ${appaddr} -> ${appfile}"
+  echo "-----------------------------------------"
+  echo "= ${textaddr} -> ${textfile}"
+  echo "========================================="
+
+  ./esptool.py --port ${usecom} write_flash ${appaddr} ${appfile} ${textaddr} ${textfile};
 fi
 
 if [[ $runuart -gt 0 ]]; then

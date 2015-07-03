@@ -14,6 +14,7 @@
 TARGET = eagle
 #FLAVOR = release
 FLAVOR = debug
+OTAUPGRADE ?= 0
 
 #EXTRA_CCFLAGS += -u
 
@@ -31,6 +32,10 @@ APPDIR = .
 LDDIR = ../ld
 
 CCFLAGS += -Os
+
+ifeq ($(OTAUPGRADE),1)
+	DEFINES += -DOTAENABLED
+endif
 
 TARGET_LDFLAGS =		\
 	-nostdlib		\

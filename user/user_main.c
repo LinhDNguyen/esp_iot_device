@@ -19,6 +19,10 @@ static uint8 curState = STATE_UNKNOWN;
 static volatile os_timer_t connectTimer;
 static uint8 ledStatus = 1;
 
+#ifndef OTAENABLED
+
+#endif
+
 // Functions
 void user_rf_pre_init(void)
 {
@@ -160,7 +164,9 @@ void ICACHE_FLASH_ATTR network_init() {
 void ICACHE_FLASH_ATTR
 smartconfig_done(sc_status status, void *pdata)
 {
+#if DEBUG
     uint8 phone_ip[4] = {0};
+#endif
     struct station_config *sta_conf = pdata;
 
     switch(status) {
@@ -191,9 +197,7 @@ smartconfig_done(sc_status status, void *pdata)
         case SC_STATUS_LINK_OVER:
 #if DEBUG
             os_printf("SC_STATUS_LINK_OVER\n");
-#endif
             os_memcpy(phone_ip, (uint8*)pdata, 4);
-#if DEBUG
             os_printf("Phone ip: %d.%d.%d.%d\n",phone_ip[0],phone_ip[1],phone_ip[2],phone_ip[3]);
 #endif
             smartconfig_stop();
