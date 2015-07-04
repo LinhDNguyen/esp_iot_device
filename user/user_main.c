@@ -1,27 +1,26 @@
+#include "espmissingincludes.h"
+#include "gpio.h"
 #include "ets_sys.h"
 #include "osapi.h"
-#include "gpio.h"
 #include "os_type.h"
 #include "user_config.h"
 #include "user_interface.h"
 #include "smartconfig.h"
 #include "espconn.h"
 #include "json/jsonparse.h"
+#include "config_cmd.h"
 
 #define user_procTaskPrio        0
 #define user_procTaskQueueLen    1
 os_event_t    user_procTaskQueue[user_procTaskQueueLen];
 static void loop(os_event_t *events);
-void ICACHE_FLASH_ATTR network_init();
 
 // Global VARs
 static uint8 curState = STATE_UNKNOWN;
-static volatile os_timer_t connectTimer;
+LOCAL os_timer_t connectTimer;
+LOCAL os_timer_t otaUpgradeTimer;
+static int isConfigEnabled = 0;
 static uint8 ledStatus = 1;
-
-#ifndef OTAENABLED
-
-#endif
 
 // Functions
 void user_rf_pre_init(void)
@@ -145,7 +144,11 @@ void ICACHE_FLASH_ATTR network_check_ip(void) {
     os_timer_disarm(&network_timer);
     wifi_get_ip_info(STATION_IF, &ipconfig);
     if (wifi_station_get_connect_status() == STATION_GOT_IP && ipconfig.ip.addr != 0) {
-        network_start();
+        if (isConfigEnabled) {
+            serverInit(23);
+        } else {
+            network_start();
+        }
     } else {
 #if DEBUG
         os_printf("No ip found\n\r");
@@ -213,6 +216,13 @@ void timer_check_connection(void *arg)
     smartconfig_start(SC_TYPE_ESPTOUCH, smartconfig_done);
 }
 
+// Disable OTA upgrade
+void disable_ota_upgrade(void *arg)
+{
+    // Disable GPIO interrupt
+    ETS_GPIO_INTR_DISABLE();
+}
+
 //Main code function
 static void ICACHE_FLASH_ATTR
 loop(os_event_t *events)
@@ -260,7 +270,31 @@ void ICACHE_FLASH_ATTR wifi_event_cb(System_Event_t *evt)
 #endif
         break;
     }
+}
+//-------------------------------------------------------------------------------------------------
+// interrupt handler
+// this function will be executed on any edge of GPIO0
+LOCAL void  gpio_intr_handler(int * dummy)
+{
+// clear gpio status. Say ESP8266EX SDK Programming Guide in  5.1.6. GPIO interrupt handler
 
+    uint32 gpio_status = GPIO_REG_READ(GPIO_STATUS_ADDRESS);
+
+// if the interrupt was by GPIO0
+    if (gpio_status & BIT(0))
+    {
+// disable interrupt for GPIO0
+        gpio_pin_intr_state_set(GPIO_ID_PIN(0), GPIO_PIN_INTR_DISABLE);
+
+// Do something, for example, increment whatyouwant indirectly
+        *dummy = 1;
+
+//clear interrupt status for GPIO0
+        GPIO_REG_WRITE(GPIO_STATUS_W1TC_ADDRESS, gpio_status & BIT(0));
+
+        GPIO_OUTPUT_SET(GPIO_ID_PIN(5), 0);
+
+    }
 }
 
 //Init function
@@ -287,6 +321,9 @@ user_init()
     PIN_FUNC_SELECT(PERIPHS_IO_MUX_MTCK_U, FUNC_GPIO13);    //Set GPIO13 to output mode
     PIN_FUNC_SELECT(PERIPHS_IO_MUX_MTMS_U, FUNC_GPIO14);    //Set GPIO14 to output mode
 
+    PIN_FUNC_SELECT(PERIPHS_IO_MUX_GPIO0_U, FUNC_GPIO0);    //Set GPIO0 for GPIO mode
+    PIN_PULLUP_DIS(PERIPHS_IO_MUX_GPIO0_U);
+
     GPIO_OUTPUT_SET(GPIO_ID_PIN(5), 1);     //Set GPIO5 low
     GPIO_OUTPUT_SET(GPIO_ID_PIN(12), 1);    //Set GPIO12 low
     GPIO_OUTPUT_SET(GPIO_ID_PIN(13), 1);    //Set GPIO13 low
@@ -309,10 +346,31 @@ user_init()
     wifi_station_set_reconnect_policy(1);
 
     // Configure the timer to check connection timeout.
-    // After 5s, if wifi is not connected, start the smartconfig
+    // After 10s, if wifi is not connected, start the smartconfig
     os_timer_disarm(&connectTimer);
     os_timer_setfn(&connectTimer, (os_timer_func_t *)timer_check_connection, NULL);
     os_timer_arm(&connectTimer, 10000, 0);
+    // OTA upgrade only available in first 5s.
+    os_timer_disarm(&otaUpgradeTimer);
+    os_timer_setfn(&otaUpgradeTimer, (os_timer_func_t *)disable_ota_upgrade, NULL);
+    os_timer_arm(&otaUpgradeTimer, 5000, 0);
+
+    // Attach interrupt handle to gpio interrupts.
+    // You can set a void pointer that will be passed to interrupt handler each interrupt
+    ETS_GPIO_INTR_DISABLE();
+    ETS_GPIO_INTR_ATTACH(gpio_intr_handler, &isConfigEnabled);
+    // All people repeat this mantra but I don't know what it means
+    gpio_register_set(GPIO_PIN_ADDR(0),
+                      GPIO_PIN_INT_TYPE_SET(GPIO_PIN_INTR_DISABLE)  |
+                      GPIO_PIN_PAD_DRIVER_SET(GPIO_PAD_DRIVER_DISABLE) |
+                      GPIO_PIN_SOURCE_SET(GPIO_AS_PIN_SOURCE));
+
+    // clear gpio status. Say ESP8266EX SDK Programming Guide in  5.1.6. GPIO interrupt handler
+    GPIO_REG_WRITE(GPIO_STATUS_W1TC_ADDRESS, BIT(0));
+    // enable interrupt for his GPIO
+    //     GPIO_PIN_INTR_... defined in gpio.h
+    gpio_pin_intr_state_set(GPIO_ID_PIN(0), GPIO_PIN_INTR_NEGEDGE);
+    ETS_GPIO_INTR_ENABLE();
 
     //Start os task
     system_os_task(loop, user_procTaskPrio,user_procTaskQueue, user_procTaskQueueLen);
