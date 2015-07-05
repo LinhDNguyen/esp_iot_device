@@ -5,6 +5,7 @@
 #include "espconn.h"
 #include "mem.h"
 #include "osapi.h"
+#include "upgrade.h"
 
 #include "config_cmd.h"
 
@@ -17,6 +18,8 @@
 #define MSG_BUF_LEN 128
 
 bool doflash = true;
+
+static void ICACHE_FLASH_ATTR handleUpgrade(uint8_t serverVersion, const char *server_ip, uint16_t port, const char *path);
 
 char *my_strdup(char *str) {
     size_t len;
@@ -74,40 +77,95 @@ void config_cmd_flash(serverConnData *conn, uint8_t argc, char *argv[]) {
         espbuffsentstring(conn, MSG_ERROR);
     else
         espbuffsentstring(conn, MSG_OK);
-
-
 }
+
+void config_restart(serverConnData *conn, uint8_t argc, char *argv[]) {
+    system_restart();
+}
+
 #ifdef OTAENABLED
 void ota_upgrade(serverConnData *conn, uint8_t argc, char *argv[]) {
-    espbuffsentprintf(conn, "START OTA UPGRADE....\r\n");
-    // flash_param_t *flash_param = flash_param_get();
+    espbuffsentprintf(conn, "START OTA UPGRADE...CUR ROM: %d.\r\n", ROMNUM);
 
-    // if (argc == 0)
-    //  espbuffsentprintf(conn, "PORT=%d\r\n"MSG_OK, flash_param->port);
-    // else if (argc != 1)
-    //  espbuffsentstring(conn, MSG_ERROR);
-    // else {
-    //  uint32_t port = atoi(argv[1]);
-    //  if ((port == 0)||(port>65535)) {
-    //      espbuffsentstring(conn, MSG_ERROR);
-    //  } else {
-    //      if (port != flash_param->port) {
-    //          flash_param->port = port;
-    //          if (flash_param_set())
-    //              espbuffsentstring(conn, MSG_OK);
-    //          else
-    //              espbuffsentstring(conn, MSG_ERROR);
-    //          os_delay_us(10000);
-    //          system_restart();
-    //      } else {
-    //          espbuffsentstring(conn, MSG_OK);
-    //      }
-    //  }
-    // }
-    // // debug
+    if (argc == 0)
+        espbuffsentstring(conn, "OTA <SRV IP> <PORT> <FOLDER PATH>\r\n");
+    else if (argc != 3)
+        espbuffsentstring(conn, MSG_ERROR);
+    else {
+        uint16_t port = atoi(argv[2]);
+        uint8_t iparr[4];
+        uint8_t i;
+        char tmp[4];
+        char* pCurIp = argv[1];
+        char * ch;
+
+        os_printf("\r\nOTA UPGRADE with IP:%s, port:%d, path:%s", argv[1], argv[2], argv[3]);
+        ch = strchr(pCurIp, '.');
+#if DEBUG
+        os_printf("\r\nFirst: %s", pCurIp);
+        os_printf("\r\nAfter: %s", ch);
+#endif
+        for (i = 0; i < 4; ++i) {
+            if (i < (ch - pCurIp + 1)) {
+                tmp[i] = pCurIp[i];
+            } else {
+                tmp[i] = 0;
+            }
+        }
+        iparr[0] = atoi(tmp);
+        pCurIp = ch + 1;
+
+        ch = strchr(pCurIp, '.');
+        os_printf("\r\nFirst: %s", pCurIp);
+        os_printf("\r\nAfter: %s", ch);
+        for (i = 0; i < 4; ++i) {
+            if (i < (ch - pCurIp + 1)) {
+                tmp[i] = pCurIp[i];
+            } else {
+                tmp[i] = 0;
+            }
+        }
+        iparr[1] = atoi(tmp);
+        pCurIp = ch + 1;
+
+        ch = strchr(pCurIp, '.');
+        os_printf("\r\nFirst: %s", pCurIp);
+        os_printf("\r\nAfter: %s", ch);
+        for (i = 0; i < 4; ++i) {
+            if (i < (ch - pCurIp + 1)) {
+                tmp[i] = pCurIp[i];
+            } else {
+                tmp[i] = 0;
+            }
+        }
+        iparr[2] = atoi(tmp);
+        pCurIp = ch + 1;
+
+        ch = strchr(pCurIp, '.');
+        os_printf("\r\nFirst: %s", pCurIp);
+        os_printf("\r\nAfter: %s", ch);
+        for (i = 0; i < 4; ++i) {
+            if (i < (argv[1] + strlen(argv[1]) - pCurIp + 1)) {
+                tmp[i] = pCurIp[i];
+            } else {
+                tmp[i] = 0;
+            }
+        }
+        iparr[3] = atoi(tmp);
+
+        os_printf("\r\n=> IP: %d %d %d %d", iparr[0], iparr[1], iparr[2], iparr[3]);
+
+        if ((port == 0)||(port>65535)) {
+             espbuffsentstring(conn, MSG_ERROR);
+        } else {
+            espbuffsentstring(conn, MSG_OK);
+            handleUpgrade(2, iparr, port, argv[3]);
+        }
+    }
+    // debug
     // {
-    //  espbuffsentprintf(conn, "flash param:\n\tmagic\t%d\n\tversion\t%d\n\tbaud\t%d\n\tport\t%d\n",
-    //      flash_param->magic, flash_param->version, flash_param->baud, flash_param->port);
+    //     espbuffsentprintf(conn, "flash param:\n\tmagic\t%d\n\tversion\t%d\n\tbaud\t%d\n\tport\t%d\n",
+    //         flash_param->magic, flash_param->version, flash_param->baud, flash_param->port);
     // }
 }
 #endif
@@ -117,6 +175,7 @@ const config_commands_t config_commands[] = {
         { "OTA", &ota_upgrade },
 #endif
         { "FLASH", &config_cmd_flash },
+        { "RST", &config_restart },
         { NULL, NULL }
     };
 
@@ -171,74 +230,76 @@ void config_parse(serverConnData *conn, char *buf, int len) {
 #ifdef OTAENABLED
 static void ICACHE_FLASH_ATTR ota_finished_callback(void *arg)
 {
- struct upgrade_server_info *update = arg;
- if (update->upgrade_flag == true)
- {
- os_printf("[OTA]success; rebooting!\n");
- system_upgrade_reboot();
- }
- else
- {
- os_printf("[OTA]failed!\n");
- }
- 
- os_free(update->pespconn);
- os_free(update->url);
- os_free(update);
+    struct upgrade_server_info *update = arg;
+    if (update->upgrade_flag == true)
+    {
+        os_printf("[OTA]success; rebooting!\n");
+        system_upgrade_reboot();
+    }
+    else
+    {
+        os_printf("[OTA]failed! %d - %d\n", update->upgrade_flag, system_upgrade_flag_check());
+    }
+
+    os_free(update->pespconn);
+    os_free(update->url);
+    os_free(update);
 }
  
 static void ICACHE_FLASH_ATTR handleUpgrade(uint8_t serverVersion, const char *server_ip, uint16_t port, const char *path)
 {
- const char* file;
- uint8_t userBin = system_upgrade_userbin_check();
- switch (userBin)
- {
- case UPGRADE_FW_BIN1: file = "user2.bin"; break;
- case UPGRADE_FW_BIN2: file = "user1.bin"; break;
- default:
- os_printf("[OTA]Invalid userbin number!\n");
- return;
- }
- 
- uint16_t version=1;
- if (serverVersion <= version)
- {
- os_printf("[OTA]No update. Server version:%d, local version %d\n", serverVersion, version);
- return;
- }
- 
- os_printf("[OTA]Upgrade available version: %d\n", serverVersion);
- 
- struct upgrade_server_info* update = (struct upgrade_server_info *)os_zalloc(sizeof(struct upgrade_server_info));
- update->pespconn = (struct espconn *)os_zalloc(sizeof(struct espconn));
- 
- os_memcpy(update->ip, server_ip, 4);
- update->port = port;
- 
- os_printf("[OTA]Server "IPSTR":%d. Path: %s%s\n", IP2STR(update->ip), update->port, path, file);
- 
- update->check_cb = ota_finished_callback;
- update->check_times = 10000;
- update->url = (uint8 *)os_zalloc(512);
- 
- os_sprintf((char*)update->url,
- "GET %s%s HTTP/1.1\r\n"
- "Host: "IPSTR":%d\r\n"
- "Connection: close\r\n"
- "\r\n",
- path, file, IP2STR(update->ip), update->port);
- 
- if (system_upgrade_start(update) == false)
- {
- os_printf("[OTA]Could not start upgrade\n");
- 
- os_free(update->pespconn);
- os_free(update->url);
- os_free(update);
- }
- else
- {
- os_printf("[OTA]Upgrading...\n");
- }
+    const char* file;
+    uint8_t userBin = system_upgrade_userbin_check();
+    os_printf("\r\nUserBIn = %d", userBin);
+    switch (ROMNUM)
+    {
+        case 1: file = "user2.1024.new.2.bin"; break;
+        case 2: file = "user1.1024.new.2.bin"; break;
+        default:
+            os_printf("[OTA]Invalid userbin number!\n");
+            return;
+    }
+
+    uint16_t version=1;
+    if (serverVersion <= version)
+    {
+        os_printf("[OTA]No update. Server version:%d, local version %d\n", serverVersion, version);
+        return;
+    }
+
+    os_printf("[OTA]Upgrade available version: %d\n", serverVersion);
+
+    struct upgrade_server_info* update = (struct upgrade_server_info *)os_zalloc(sizeof(struct upgrade_server_info));
+    update->pespconn = (struct espconn *)os_zalloc(sizeof(struct espconn));
+
+    os_memcpy(update->ip, server_ip, 4);
+    update->port = port;
+
+    os_printf("[OTA]Server "IPSTR":%d. Path: %s%s\n", IP2STR(update->ip), update->port, path, file);
+
+    update->check_cb = ota_finished_callback;
+    update->check_times = 10000;
+    update->url = (uint8 *)os_zalloc(512);
+
+    os_sprintf((char*)update->url,
+    "GET %s%s HTTP/1.1\r\n"
+    "Host: "IPSTR":%d\r\n"
+    "Connection: close\r\n"
+    "\r\n",
+    path, file, IP2STR(update->ip), update->port);
+    os_printf("\r\nUpdate url: %s", update->url);
+
+    if (system_upgrade_start(update) == false)
+    {
+        os_printf("[OTA]Could not start upgrade\n");
+
+        os_free(update->pespconn);
+        os_free(update->url);
+        os_free(update);
+    }
+    else
+    {
+        os_printf("[OTA]Upgrading...\n");
+    }
 }
 #endif

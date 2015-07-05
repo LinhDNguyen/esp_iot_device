@@ -311,6 +311,7 @@ user_init()
 #if DEBUG
     os_printf("\n\nSDK version:%s\n", system_get_sdk_version());
     os_printf("\r\nFlash ID: 0x%x\n", spi_flash_get_id());
+    os_printf("\r\n=======ROM %d=======", ROMNUM);
 #endif
 
     // Initialize the GPIO subsystem.

@@ -15,6 +15,7 @@ TARGET = eagle
 #FLAVOR = release
 FLAVOR = debug
 OTAUPGRADE ?= 0
+ROMNUM ?= 0
 
 #EXTRA_CCFLAGS += -u
 
@@ -35,6 +36,13 @@ CCFLAGS += -Os
 
 ifeq ($(OTAUPGRADE),1)
 	DEFINES += -DOTAENABLED
+endif
+
+ifeq ($(ROMNUM), 1)
+	DEFINES += -DROMNUM=1
+endif
+ifeq ($(ROMNUM), 2)
+	DEFINES += -DROMNUM=2
 endif
 
 TARGET_LDFLAGS =		\
